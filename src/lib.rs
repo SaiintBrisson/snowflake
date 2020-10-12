@@ -1,55 +1,42 @@
-//! The `snowflake` crate is an implement of [twitter's snowflake algorithm](https://github.com/twitter/snowflake)
-//! written in rust. The bits are organized as follows:  
-//! 
-//! - 1 -> Future use
-//! - 41 -> Epoch
-//! - 10 -> Worker ID
-//! - 12 -> Sequence counter, 0 through 4096
-//! 
-//! Author by [h_ang!(J27);](mailto:hunagjj.27@qq.com)
-
-// TODO(huangjj.27@qq.com): make the EPOCH can be set by configurations
 use std::time::{SystemTime, Duration, UNIX_EPOCH};
 use std::sync::Mutex;
 
 use anyhow::{anyhow, Result};
 
-const WORKER_ID_BITS: u8 = 10;
-const SEQUENCE_BITS: u8 = 12;
+const IDENTIFIER_BITS: u64 = 10;
+const SEQUENCE_BITS: u64 = 12;
 
-// use bit operations to get max number of the item
-const MAX_WORKER_ID: u16 = (-1 ^ (-1 << WORKER_ID_BITS)) as u16;
-const MAX_SEQUENCE: u16 = (-1 ^ (-1 << SEQUENCE_BITS)) as u16;
+const MAX_IDENTIFIER: u64 = (-1 ^ (-1 << IDENTIFIER_BITS)) as u64;
+const MAX_SEQUENCE: u64 = (-1 ^ (-1 << SEQUENCE_BITS)) as u64;
 
-// shift bits
-const WORKER_ID_SHIFT: u8 = SEQUENCE_BITS;
-const TIMESTAMP_LEFT_SHIFT: u8 = SEQUENCE_BITS + WORKER_ID_BITS;
+const IDENTIFIER_SHIFT: u64 = SEQUENCE_BITS;
+const TIMESTAMP_LEFT_SHIFT: u64 = SEQUENCE_BITS + IDENTIFIER_BITS;
 
 #[derive(Debug)]
-pub struct SnowFlakeWorker {
+pub struct SnowflakeGenerator {
     // this worker id
-    worker_id: u16,
+    identifier: u64,
     // the current millisecond sequence
-    sequence: Mutex<u16>,
+    sequence: Mutex<u64>,
     // last generation timestamp
-    last_timestamp: Mutex<SystemTime>,
+    last_timestamp: Mutex<u64>,
 }
 
-impl SnowFlakeWorker {
-    /// Creates a new SnowFlakeWorker instance.
-    pub fn new(worker_id: u16) -> Self {
-        assert!(worker_id <= MAX_WORKER_ID);
+impl SnowflakeGenerator {
+    /// Creates a new SnowflakeGenerator instance.
+    pub fn new(identifier: u64) -> Self {
+        assert!(identifier <= MAX_IDENTIFIER);
         
-        SnowFlakeWorker {
-            worker_id,
+        SnowflakeGenerator {
+            identifier,
             sequence: Mutex::new(0),
-            last_timestamp: Mutex::new(SystemTime::now()),
+            last_timestamp: Mutex::new(Self::get_millis()),
         }
     }
 
     /// Generates a new id and increments the current sequence counter
     pub fn next_id(&self) -> Result<u64> {
-        let mut timestamp = SystemTime::now();
+        let mut timestamp = Self::get_millis();
         let mut last_timestamp = self.last_timestamp.lock().map_err(|_| anyhow!("last_timestamp is poisoned"))?;
 
         if *last_timestamp > timestamp {
@@ -58,12 +45,10 @@ impl SnowFlakeWorker {
 
         let mut sequence = self.sequence.lock().map_err(|_| anyhow!("sequence is poisoned"))?;
         
-        let difference = timestamp.duration_since(*last_timestamp)?;
-
-        if difference.as_millis() == 0 {
+        if timestamp - *last_timestamp == 0 {
             *sequence += 1;
             if *sequence > MAX_SEQUENCE {
-                timestamp = block_until(timestamp);
+                timestamp = Self::block_until(timestamp);
                 *sequence = 0;
             }
         } else {
@@ -72,25 +57,27 @@ impl SnowFlakeWorker {
 
         *last_timestamp = timestamp;
 
-        let duration = timestamp
+        Ok(timestamp << TIMESTAMP_LEFT_SHIFT | self.identifier << IDENTIFIER_SHIFT | *sequence)
+    }
+
+    fn get_millis() -> u64 {
+        SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or(Duration::new(0, 0))
-            .as_millis() as u64;
+            .as_millis() as u64
+    }
 
-        Ok(
-            (duration << TIMESTAMP_LEFT_SHIFT) as u64 |
-            (self.worker_id << WORKER_ID_SHIFT) as u64 |
-            *sequence as u64
-        )
+    fn block_until(until: u64) -> u64 {
+        let mut now = Self::get_millis();
+        while now <= until {
+            now = Self::get_millis();
+        }
+        now
     }
 }
 
-fn block_until(until: SystemTime) -> SystemTime {
-    let mut now;
-    loop {
-        now = SystemTime::now();
-        if now > until {
-            return now;
-        }
+impl Default for SnowflakeGenerator {
+    fn default() -> Self {
+        Self::new(0)
     }
 }
