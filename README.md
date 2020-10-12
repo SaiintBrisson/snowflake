@@ -1,20 +1,21 @@
+
+## DISCLAIMER
+
+The original crate can generate the same ID twice, this fork fixes it.
+
 # SnowFlake
-The `snowflake` crate(not available on cargo currently) is an implement of [twitter's snowflake algorithm](https://github.com/twitter/snowflake) written in rust. Currently it generate uuid as follows:
 
-- 1 bit for unused sign bit
-- 41 bits for milliseconds timestamp since `std::time::UNIX_EPOCH`
-- 10 bits for generator id:
-	- 5 bits for datacenter id
-	- 5 bits for worker id in specific datacenter
-- rest 12 bits for sequence id generated in the same timestamp at the generator
+The `snowflake` crate(not available on cargo currently) is an implement of [twitter's snowflake algorithm](https://github.com/twitter/snowflake) written in rust.
+The bits are organized as follows:
 
-In fact, the bits of the each three information can be flow, as long as they can form a 64 bit that can be store in an `i64`
+- 1 -> Future use
+- 41 -> Epoch
+- 10 -> Worker ID
+- 12 -> Sequence counter, 0 through 4096
 
 TODO:  
 
-- make the bits of information configurable
-- make the codes more neat
-- make the EPOCH time configurable
-- ~~optimize the block time counting~~
+- Make the epoch adjustable
 
-author by [h_ang!(J27);](mailto:hunagjj.27@qq.com)
+Created by [h_ang!(J27);](mailto:hunagjj.27@qq.com)
+Refactored by [saiintbrisson](mailto:luizcarlosmpc@gmail.com)

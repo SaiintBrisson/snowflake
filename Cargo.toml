@@ -2,5 +2,7 @@
 name = "snowflake"
 version = "0.1.1"
 authors = ["h_ang!(J27); <huangjj.27@qq.com>"]
+edition = "2018"
 
 [dependencies]
+anyhow = "1.0.33"
